@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Конвертер валют</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #cde9d5;
+      margin: 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+    }
+
+    .converter-container {
+      background: #ffffff;
+      border-radius: 12px;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+      padding: 20px;
+      width: 400px;
+      text-align: center;
+    }
+
+    .tabs {
+      display: flex;
+      justify-content: space-between;
+      background-color: #f3f4f6;
+      padding: 10px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+    }
+
+    .tab {
+      font-size: 16px;
+      padding: 10px;
+      cursor: pointer;
+      flex: 1;
+      text-align: center;
+      border-radius: 6px;
+    }
+
+    .tab.active {
+      background: #d57ae8;
+      color: #fff;
+    }
+
+    .form-group {
+      margin: 20px 0;
+    }
+
+    input, select, button {
+      padding: 10px;
+      width: 100%;
+      margin-bottom: 10px;
+      border: 1px solid #ddd;
+      border-radius: 6px;
+      font-size: 16px;
+    }
+
+    .result {
+      margin-top: 20px;
+      font-size: 24px;
+      color: #333;
+    }
+
+    .currency-label {
+      font-size: 14px;
+      color: #888;
+      display: block;
+      margin-top: 5px;
+    }
+
+    canvas {
+      margin-top: 20px;
+    }
+
+    .info-text {
+      text-align: left;
+      margin-top: 10px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+    }
+
+    table th, table td {
+      padding: 10px;
+      border: 1px solid #ddd;
+    }
+
+    #refreshRates, #backToConverter, #backToInfo {
+      margin-top: 10px;
+      padding: 10px;
+      width: 100%;
+      background-color: #d57ae8;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+    }
+
+  </style>
+</head>
+<body>
+  <div class="converter-container">
+    <div class="tabs">
+      <div class="tab active" id="tabConverter">Конвертер</div>
+      <div class="tab" id="tabRates">Курси</div>
+      <div class="tab" id="tabInfo">Інформація</div>
+    </div>
+
+    <div id="converterTab" class="tab-content">
+      <div class="form-group">
+        <input type="number" id="amount" placeholder="Введіть суму" />
+        <select id="fromCurrency">
+          <!-- Валюти будуть завантажені динамічно -->
+        </select>
+        <select id="toCurrency">
+          <!-- Валюти будуть завантажені динамічно -->
+        </select>
+        <button id="convertBtn">Конвертувати</button>
+      </div>
+
+      <div class="result" id="result"></div>
+      <canvas id="rateChart" width="400" height="200"></canvas>
+    </div>
+
+    <div id="ratesTab" class="tab-content" style="display: none;">
+      <h3>Курси валют</h3>
+      <p>Актуальні курси валют відносно <strong>USD</strong>.</p>
+      <table id="ratesTable">
+        <thead>
+          <tr style="background-color: #f3f4f6; text-align: center;">
+            <th>Валюта</th>
+            <th>Курс</th>
+          </tr>
+        </thead>
+        <tbody>
+          <!-- Дані будуть додані динамічно -->
+        </tbody>
+      </table>
+      <button id="refreshRates">Оновити курси</button>
+      <button id="backToConverter">Повернутися</button>
+    </div>
+
+    <div id="infoTab" class="tab-content" style="display: none;">
+      <h3>Інформація про конвертер</h3>
+      <p>Цей конвертер дозволяє вам швидко та зручно обмінювати валюти на основі актуальних курсів валют, що надаються через API.</p>
+      <p>Він підтримує велику кількість світових валют, зокрема долари США, євро, гривні та багато інших.</p>
+      <h4>Як працює конвертер?</h4>
+      <p>Конвертер використовує API для отримання актуальних курсів валют і дозволяє користувачам обирати дві валюти для конвертації. Ви вводите суму в одну валюту і отримуєте результат у іншій валюті.</p>
+      <h4>Підтримувані валюти:</h4>
+      <ul>
+        <li>USD - Долар США</li>
+        <li>EUR - Євро</li>
+        <li>UAH - Гривня</li>
+        <li>GBP - Фунт стерлінгів</li>
+        <li>JPY - Єна</li>
+        <li>CAD - Канадський долар</li>
+        <li>AUD - Австралійський долар</li>
+        <li>CHF - Швейцарський франк</li>
+        <li>CNY - Юань</li>
+      </ul>
+      <button id="backToInfo">Повернутися</button>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>
+    const apiUrl = 'https://open.er-api.com/v6/latest/';
+    const fromCurrency = document.getElementById('fromCurrency');
+    const toCurrency = document.getElementById('toCurrency');
+    const amount = document.getElementById('amount');
+    const result = document.getElementById('result');
+    const convertBtn = document.getElementById('convertBtn');
+    const rateChart = document.getElementById('rateChart').getContext('2d');
+    const ratesList = document.getElementById('ratesTable').getElementsByTagName('tbody')[0];
+    const refreshRatesBtn = document.getElementById('refreshRates');
+
+    let chartInstance;
+
+    // Популярні валюти
+    const currencyNames = {
+      USD: 'Долар США (США)',
+      EUR: 'Євро (Єврозона)',
+      UAH: 'Гривня (Україна)',
+      GBP: 'Фунт стерлінгів (Великобританія)',
+      JPY: 'Єна (Японія)',
+      CAD: 'Канадський долар (Канада)',
+      AUD: 'Австралійський долар (Австралія)',
+      CHF: 'Швейцарський франк (Швейцарія)',
+      CNY: 'Юань (Китай)',
+    };
+
+    async function loadCurrencies() {
+      try {
+        const response = await fetch(apiUrl + 'USD');
+        const data = await response.json();
+        const currencies = Object.keys(data.rates);
+
+        // Додаємо лише популярні валюти
+        const popularCurrencies = ['USD', 'EUR', 'UAH', 'GBP', 'JPY', 'CAD', 'AUD', 'CHF', 'CNY'];
+
+        popularCurrencies.forEach(currency => {
+          const option1 = document.createElement('option');
+          option1.value = currency;
+          option1.textContent = `${currency} - ${currencyNames[currency] || currency}`;
+
+          const option2 = option1.cloneNode(true);
+
+          fromCurrency.appendChild(option1);
+          toCurrency.appendChild(option2);
+        });
+
+        fromCurrency.value = 'USD';
+        toCurrency.value = 'UAH';
+      } catch (error) {
+        console.error('Помилка завантаження валют:', error);
+      }
+    }
+
+    async function convertCurrency() {
+      const from = fromCurrency.value;
+      const to = toCurrency.value;
+      const amountValue = parseFloat(amount.value);
+      if (isNaN(amountValue) || amountValue <= 0) {
+        result.textContent = 'Будь ласка, введіть коректну суму.';
+        return;
+      }
+
+      try {
+        const response = await fetch(apiUrl + from);
+        const data = await response.json();
+        const rate = data.rates[to];
+        const convertedAmount = (amountValue * rate).toFixed(2);
+        result.textContent = `${amountValue} ${from} = ${convertedAmount} ${to}`;
+
+        updateChart(from, to);
+      } catch (error) {
+        console.error('Помилка конвертації:', error);
+        result.textContent = 'Сталася помилка при конвертації.';
+      }
+    }
+
+    async function loadRates() {
+      try {
+        const response = await fetch(apiUrl + 'USD');
+        const data = await response.json();
+        const rates = data.rates;
+
+        ratesList.innerHTML = ''; // Очищуємо попередній список
+
+        // Додаємо лише популярні валюти
+        const popularCurrencies = ['USD', 'EUR', 'UAH', 'GBP', 'JPY', 'CAD', 'AUD', 'CHF', 'CNY'];
+
+        popularCurrencies.forEach(currency => {
+          const row = document.createElement('tr');
+          row.innerHTML = `
+            <td>${currency} - ${currencyNames[currency] || currency}</td>
+            <td>${rates[currency] ? rates[currency].toFixed(2) : '—'}</td>
+          `;
+          ratesList.appendChild(row);
+        });
+
+        updateChart('USD', 'EUR'); // Початковий графік між USD та EUR
+      } catch (error) {
+        console.error('Помилка завантаження курсів:', error);
+        ratesList.innerHTML = '<tr><td colspan="2" style="text-align: center;">Не вдалося завантажити курси.</td></tr>';
+      }
+    }
+
+    // Функція для оновлення графіка
+    function updateChart(from, to) {
+      fetch(apiUrl + from)
+        .then(response => response.json())
+        .then(data => {
+          const rates = data.rates;
+          const labels = Object.keys(rates);
+          const values = labels.map(label => rates[label]);
+
+          if (chartInstance) {
+            chartInstance.destroy(); // знищуємо старий графік, якщо він існує
+          }
+
+          chartInstance = new Chart(rateChart, {
+            type: 'line',
+            data: {
+              labels: labels,
+              datasets: [{
+                label: `${from} до ${to}`,
+                data: values,
+                borderColor: '#d57ae8',
+                fill: false,
+                tension: 0.1
+              }]
+            },
+            options: {
+              responsive: true,
+              scales: {
+                y: {
+                  beginAtZero: false
+                }
+              }
+            }
+          });
+        })
+        .catch(error => {
+          console.error('Помилка завантаження графіка:', error);
+        });
+    }
+
+    convertBtn.addEventListener('click', convertCurrency);
+
+    document.getElementById('backToConverter').addEventListener('click', () => {
+      document.getElementById('converterTab').style.display = 'block';
+      document.getElementById('ratesTab').style.display = 'none';
+      document.getElementById('infoTab').style.display = 'none';
+      document.querySelector('.tab.active').classList.remove('active');
+      document.getElementById('tabConverter').classList.add('active');
+    });
+
+    document.getElementById('tabRates').addEventListener('click', () => {
+      document.getElementById('ratesTab').style.display = 'block';
+      document.getElementById('converterTab').style.display = 'none';
+      document.getElementById('infoTab').style.display = 'none';
+      document.querySelector('.tab.active').classList.remove('active');
+      document.getElementById('tabRates').classList.add('active');
+      loadRates();
+    });
+
+    document.getElementById('tabConverter').addEventListener('click', () => {
+      document.getElementById('converterTab').style.display = 'block';
+      document.getElementById('ratesTab').style.display = 'none';
+      document.getElementById('infoTab').style.display = 'none';
+      document.querySelector('.tab.active').classList.remove('active');
+      document.getElementById('tabConverter').classList.add('active');
+    });
+
+    document.getElementById('tabInfo').addEventListener('click', () => {
+      document.getElementById('infoTab').style.display = 'block';
+      document.getElementById('converterTab').style.display = 'none';
+      document.getElementById('ratesTab').style.display = 'none';
+      document.querySelector('.tab.active').classList.remove('active');
+      document.getElementById('tabInfo').classList.add('active');
+    });
+
+    document.getElementById('backToInfo').addEventListener('click', () => {
+      document.getElementById('infoTab').style.display = 'none';
+      document.getElementById('converterTab').style.display = 'none';
+      document.getElementById('ratesTab').style.display = 'none';
+      document.querySelector('.tab.active').classList.remove('active');
+      document.getElementById('tabInfo').classList.add('active');
+    });
+
+    loadCurrencies();  // Завантажуємо валюти при першому завантаженні сторінки
+  </script>
+</body>
+</html>
